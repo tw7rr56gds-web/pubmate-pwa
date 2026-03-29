@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">PubMate</string>
+    <string name="title_activity_main">PubMate</string>
+    <string name="package_name">com.pubmate.app</string>
+    <string name="custom_url_scheme">com.pubmate.app</string>
+</resources>
