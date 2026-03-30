@@ -1,0 +1,44 @@
+# ==========================================================================
+# GIT IGNORE CONFIGURATION (Seminararbeit Pfisterer)
+# Ziel: Ausschluss von Build-Artefakten, Abhängigkeiten und sensitiven Daten.
+# ==========================================================================
+
+# --- DEPENDENCIES ---
+# node_modules enthält installierte Bibliotheken; wird lokal via 'npm i' erzeugt.
+node_modules
+.pnp
+.pnp.js
+
+# --- BUILD OUTPUTS ---
+# Die dist-Ordner enthalten das optimierte Produktions-Bundle (Vite Build)[cite: 700, 722].
+# Diese Dateien werden automatisch generiert und gehören nicht in die Quellverwaltung.
+dist
+dist-ssr
+*.local
+
+# --- SECURITY / SECRETS ---
+# EXTREM WICHTIG: Verhindert, dass API-Keys und Backend-Secrets (Firebase) 
+# öffentlich auf GitHub landen.
+.env
+.env.*
+!.env.example
+
+# --- LOGS ---
+# Fehlermeldungen und Debug-Protokolle von Package-Managern.
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- EDITOR / OS SPECIFIC ---
+# Verhindert das Einchecken von IDE-Konfigurationen und Betriebssystem-Metadaten.
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
