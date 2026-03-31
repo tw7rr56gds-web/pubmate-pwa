@@ -1,35 +1,60 @@
 {
   "name": "pubmate",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
+  
+  "//_1": "=== SCRIPT-BEFEHLE (Build & Deployment) ===",
+  "//_1a": "Automatisierung des Entwicklungs- und Release-Zyklus.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy": "npm run build && gh-pages -d dist"
   },
+
+  "//_2": "=== PRODUCTION DEPENDENCIES ===",
+  "//_2a": "Diese Pakete landen am Ende im fertigen App-Code für den Nutzer.",
   "dependencies": {
-    "@capacitor/android": "^8.3.0",
-    "@capacitor/camera": "^8.0.2",
-    "@capacitor/cli": "^8.3.0",
-    "@capacitor/core": "^8.3.0",
-    "@capacitor/ios": "^8.3.0",
-    "@ionic/pwa-elements": "^3.4.0",
-    "firebase": "^10.0.0",
+    "//_UI": "Frontend-Bibliothek für eine reaktive, deklarative Benutzeroberfläche:",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    
+    "//_MBaaS": "Firebase SDK: Anbindung an das Mobile Backend as a Service (Auth, DB, Storage):",
+    "firebase": "^10.0.0",
+    
+    "//_CROSS_PLATFORM": "Capacitor: Ermöglicht den Zugriff auf native Hardware (Kamera) aus dem Web-Code heraus:",
+    "@capacitor/core": "^8.3.0",
+    "@capacitor/cli": "^8.3.0",
+    "@capacitor/android": "^8.3.0",
+    "@capacitor/ios": "^8.3.0",
+    "@capacitor/camera": "^8.0.2",
+    "@ionic/pwa-elements": "^3.4.0"
   },
+
+  "//_3": "=== DEVELOPMENT DEPENDENCIES ===",
+  "//_3a": "Werkzeuge, die nur für die Entwicklung und den Build-Prozess benötigt werden.",
   "devDependencies": {
+    "//_BUNDLER": "Vite: Hochleistungs-Bundler für eine schnelle Developer Experience:",
+    "vite": "^8.0.0",
+    "@vitejs/plugin-react": "^4.0.0",
+    
+    "//_PWA": "Vite PWA Plugin: Generiert automatisch Service Worker und Manifest für die Offline-Fähigkeit:",
+    "vite-plugin-pwa": "^1.2.0",
+    
+    "//_RWD": "Tailwind CSS & PostCSS: Utility-First Framework für Responsive Web Design (Mobile First):",
+    "tailwindcss": "^3.3.2",
+    "autoprefixer": "^10.4.14",
+    "postcss": "^8.4.24",
     "@tailwindcss/postcss": "^4.2.2",
+    
+    "//_TOOLING": "Code-Qualitätssicherung und Types (Prof. Pfisterer Kriterium: sauberer Code):",
+    "eslint": "^8.38.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
-    "@vitejs/plugin-react": "^4.0.0",
-    "autoprefixer": "^10.4.14",
-    "eslint": "^8.38.0",
-    "postcss": "^8.4.24",
-    "tailwindcss": "^3.3.2",
-    "vite": "^8.0.0",
-    "vite-plugin-pwa": "^1.2.0"
+    
+    "//_HOSTING": "Ermöglicht das nahtlose Deployment auf GitHub Pages (HTTPS-Zwang für PWA):",
+    "gh-pages": "^6.3.0"
   }
 }

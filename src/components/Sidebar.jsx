@@ -3,21 +3,29 @@ import { db, storage, messaging } from '../firebase';
 import { doc, updateDoc, deleteDoc } from 'firebase/firestore'; 
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
-import { deleteUser, updatePassword } from 'firebase/auth'; 
+import { deleteUser, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth'; 
 import { getToken } from 'firebase/messaging'; 
 
+/**
+ * SIDEBAR COMPONENT (USER PREFERENCES & SECURITY)
+ * Verwaltet das erweiterte Nutzerprofil, Cross-Platform-Features (Kamera) 
+ * und kritische Account-Operationen (Sicherheit/Re-Authentifizierung).
+ */
 export const Sidebar = ({ user, userData, setUserData, isOpen, onClose, onLogout }) => {
   // --- REACTIVE STATE MANAGEMENT ---
+  // UI-Zustände für asynchrone Operationen (Uploads, Security-Checks)
   const [image, setImage] = useState(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   
+  // State für die sichere Passwort-Änderung (Re-Authentication Pattern)
+  const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [passwordStatus, setPasswordStatus] = useState({ type: '', msg: '' });
 
   // --- CROSS-PLATFORM DEVELOPMENT: CAPACITOR ---
-  // Zugriff auf native Gerätefunktionen (Kamera/Galerie) über das Capacitor Plugin.
-  // Ermöglicht eine "Native-like" Experience bei gleicher Codebasis.
+  // Zugriff auf native Hardware (Kamera/Dateisystem) über eine einheitliche API.
+  // Brückt die Lücke zwischen Web-Technologie und nativen Gerätefunktionen.
   const takePicture = async () => {
     try {
       const photo = await Camera.getPhoto({
@@ -27,17 +35,18 @@ export const Sidebar = ({ user, userData, setUserData, isOpen, onClose, onLogout
         source: CameraSource.Prompt 
       });
 
-      // Konvertierung der URI in ein Blob für den Firebase-Upload
+      // Konvertierung der URI-Referenz in ein übertragbares Blob-Objekt
       const response = await fetch(photo.webPath);
       const blob = await response.blob();
       setImage(blob);
     } catch (error) {
-      console.log("Kamera abgebrochen oder Fehler:", error);
+      console.log("Hardware-Zugriff abgebrochen oder fehlgeschlagen:", error);
     }
   };
 
-  // --- MBAAS: STORAGE & DATABASE ---
-  // Speichert das Blob im Firebase Storage und verknüpft die URL im Firestore User-Dokument
+  // --- MBAAS: STORAGE & FIRESTORE SYNCHRONIZATION ---
+  // Lädt binäre Daten (Bilder) in den Firebase Storage und aktualisiert 
+  // synchron die Metadaten in der NoSQL-Datenbank (Firestore).
   const uploadProfilePicture = async () => {
     if (!image) return alert("Bitte wähle zuerst ein Bild aus.");
     
@@ -51,60 +60,60 @@ export const Sidebar = ({ user, userData, setUserData, isOpen, onClose, onLogout
       const userDocRef = doc(db, "users", user.uid);
       await updateDoc(userDocRef, { profilbild_url: url });
       
-      // Lokalen State aktualisieren, damit die UI sofort (reaktiv) umschaltet
+      // Reagiert sofort: Lokaler State wird aktualisiert (Optimistic UI Update)
       setUserData((prev) => ({ ...prev, profilbild_url: url }));
       alert("Profilbild erfolgreich aktualisiert!");
       setImage(null);
     } catch (error) {
-      alert("Fehler beim Hochladen: " + error.message);
+      alert("Fehler beim Upload: " + error.message);
     } finally {
       setUploadingImage(false);
     }
   };
 
-  // --- PWA: RE-ENGAGEABILITY & PROGRESSIVE ENHANCEMENT ---
-  // Registriert den Client für Web Push Notifications über Firebase Cloud Messaging (FCM)
+  // --- PWA: RE-ENGAGEABILITY & PUSH NOTIFICATIONS ---
+  // Implementiert die vierte PWA-Säule: Laufzeit-Prüfung und Opt-in für Push-Nachrichten.
   const requestNotificationPermission = async () => {
-    // Feature Detection: Laufzeitprüfung, ob die Notification API unterstützt wird
     if (!("Notification" in window)) {
-      alert("Dein Browser unterstützt keine Benachrichtigungen.");
+      alert("Dein Browser unterstützt die Web Notification API nicht.");
       return;
     }
 
     try {
-      // Expliziter Opt-in des Nutzers (Best Practice laut Skript)
+      // Explizite Berechtigungsanfrage (User Consent)
       const permission = await Notification.requestPermission();
       if (permission === "granted") {
         
-        // VAPID Key via Environment Variables injiziert (Sicherheits-Best-Practice)
+        // VAPID-Key Injektion über sichere Umgebungsvariablen
         const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
-
         const currentToken = await getToken(messaging, { vapidKey });
         
         if (currentToken) {
-          console.log("Dein FCM Token (für Test-Nachrichten):", currentToken);
-          alert("Super! Du bist registriert. (Dein Token steht in der Konsole!)");
+          console.log("FCM Device Token:", currentToken);
+          alert("Push-Nachrichten aktiviert! (Token in der Konsole)");
         } else {
-          alert("Fehler: Konnte kein Token generieren.");
+          alert("Fehler bei der Token-Generierung durch FCM.");
         }
       } else {
-        alert("Schade! Du kannst es jederzeit in den Browser-Einstellungen ändern.");
+        alert("Berechtigung abgelehnt. Anpassung in den Browser-Einstellungen möglich.");
       }
     } catch (e) {
-      console.error("Fehler bei der Benachrichtigungs-Anfrage: ", e);
+      console.error("Fehler bei der Notification-Registrierung: ", e);
     }
   };
 
-  // --- MBAAS: AUTHENTICATION MANAGEMENT ---
+  // --- MBAAS SECURITY: RE-AUTHENTICATION PATTERN ---
+  // Schützt sensitive Operationen vor Session-Hijacking durch Anforderung 
+  // der aktuellen Credentials (altes Passwort), bevor Änderungen am Account erlaubt sind.
   const handlePasswordChange = async () => {
-    if (!newPassword) return;
+    if (!oldPassword || !newPassword) return;
 
-    // Strikte Client-Validierung zur Vermeidung unnötiger Backend-Calls
+    // Client-seitige Validierung zur Reduzierung von Backend-Last
     const passwordRegex = /^(?=.*[A-Z])(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{12,}$/;
     if (!passwordRegex.test(newPassword)) {
       setPasswordStatus({ 
         type: 'error', 
-        msg: 'Mindestens 12 Zeichen, 1 Großbuchstabe und 1 Sonderzeichen!' 
+        msg: 'Mindestens 12 Zeichen, 1 Großbuchstabe und 1 Sonderzeichen erforderlich.' 
       });
       return;
     }
@@ -113,38 +122,46 @@ export const Sidebar = ({ user, userData, setUserData, isOpen, onClose, onLogout
     setPasswordStatus({ type: '', msg: '' });
 
     try {
+      // SCHRITT 1: Generierung eines Credential-Tickets mit dem alten Passwort
+      const credential = EmailAuthProvider.credential(user.email, oldPassword);
+      
+      // SCHRITT 2: Re-Authentifizierung gegen das Firebase Backend
+      await reauthenticateWithCredential(user, credential);
+
+      // SCHRITT 3: Ausführung der sensitiven Operation (Passwort-Update)
       await updatePassword(user, newPassword);
-      setPasswordStatus({ type: 'success', msg: 'Passwort erfolgreich geändert! ✅' });
+      
+      setPasswordStatus({ type: 'success', msg: 'Passwort erfolgreich und sicher aktualisiert! ✅' });
+      setOldPassword(''); 
       setNewPassword(''); 
     } catch (error) {
-      // Spezifisches Error-Handling für abgelaufene Authentifizierungs-Tokens
-      if (error.code === 'auth/requires-recent-login') {
-        setPasswordStatus({ 
-          type: 'error', 
-          msg: 'Sicherheitscheck: Bitte logge dich kurz aus und wieder ein, um das Passwort zu ändern.' 
-        });
+      // Differenziertes Error-Handling für bessere User Experience
+      if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
+        setPasswordStatus({ type: 'error', msg: 'Das aktuelle Passwort ist nicht korrekt.' });
       } else {
-        setPasswordStatus({ type: 'error', msg: 'Fehler: ' + error.message });
+        setPasswordStatus({ type: 'error', msg: 'Sicherheitsfehler: ' + error.message });
       }
     } finally {
       setIsChangingPassword(false);
     }
   };
 
+  // Löschen des Accounts (erfordert idealerweise ebenfalls Re-Authentifizierung, 
+  // hier als erweiterte Warnung implementiert).
   const handleDeleteAccount = async () => {
-    const confirmDelete = window.confirm("Willst du deinen Account und alle Daten wirklich unwiderruflich löschen? 😢");
+    const confirmDelete = window.confirm("WARNUNG: Dies löscht alle deine Daten unwiderruflich. Fortfahren?");
     if (!confirmDelete) return;
 
     try {
-      // Löschanforderung an Datenbank und Auth-Service
+      // Gewährleistung der referentiellen Integrität: Erst DB-Eintrag, dann Auth-Identität löschen
       await deleteDoc(doc(db, "users", user.uid));
       await deleteUser(user);
-      alert("Dein Account wurde erfolgreich gelöscht.");
+      alert("Account erfolgreich entfernt.");
     } catch (error) {
       if (error.code === 'auth/requires-recent-login') {
-        alert("Aus Sicherheitsgründen musst du dich kurz aus- und wieder einloggen, um deinen Account zu löschen.");
+        alert("Security Policy: Bitte logge dich kurz aus und wieder ein, um den Account zu löschen.");
       } else {
-        alert("Fehler beim Löschen: " + error.message);
+        alert("Löschen fehlgeschlagen: " + error.message);
       }
     }
   };
@@ -152,70 +169,88 @@ export const Sidebar = ({ user, userData, setUserData, isOpen, onClose, onLogout
   // --- DECLARATIVE UI RENDERING ---
   return (
     <>
-      {/* Overlay: Schließt die Sidebar beim Klick daneben */}
+      {/* Dimmer-Overlay (UX Best Practice) */}
       {isOpen && <div className="fixed inset-0 bg-black/40 z-40 transition-opacity" onClick={onClose}></div>}
       
-      {/* Off-Canvas Navigation (Responsive Pattern) */}
+      {/* Off-Canvas Menü (Responsive Layout Model) */}
       <div className={`fixed top-0 right-0 h-full w-80 bg-white z-50 shadow-2xl transform transition-transform duration-300 ease-in-out flex flex-col ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
         <div className="p-6 flex-1 overflow-y-auto">
+          
           <div className="flex justify-between items-center mb-8">
             <h2 className="text-2xl font-black text-gray-800">Einstellungen</h2>
-            <button onClick={onClose} className="text-gray-400 hover:text-red-500 text-3xl leading-none">&times;</button>
+            <button onClick={onClose} className="text-gray-400 hover:text-red-500 text-3xl leading-none" aria-label="Schließen">&times;</button>
           </div>
 
-          {/* Sektion: Profilbild (Native Device Features) */}
+          {/* Device Integration: Camera / Profilbild */}
           <div className="mb-8 bg-gray-50 p-4 rounded-2xl border border-gray-100">
-            <h3 className="font-bold text-gray-700 mb-3 text-sm uppercase tracking-wider">Profilbild ändern</h3>
+            <h3 className="font-bold text-gray-700 mb-3 text-sm uppercase tracking-wider">Profilbild</h3>
             <div className="flex flex-col gap-3">
               {image ? (
-                <p className="text-sm text-green-600 font-bold text-center">✅ Bild ausgewählt!</p>
+                <p className="text-sm text-green-600 font-bold text-center">✅ Bild bereit zum Upload</p>
               ) : (
                 <button 
                   onClick={takePicture}
                   className="w-full bg-orange-100 text-orange-700 font-bold py-2.5 rounded-xl shadow-sm hover:bg-orange-200 transition"
                 >
-                  📸 Foto aufnehmen / auswählen
+                  📸 Foto aufnehmen / wählen
                 </button>
               )}
-              <button onClick={uploadProfilePicture} disabled={uploadingImage || !image} className={`w-full text-white font-bold py-2.5 rounded-xl transition shadow-sm ${uploadingImage || !image ? 'bg-orange-300 cursor-not-allowed' : 'bg-orange-500 hover:bg-orange-600'}`}>
-                {uploadingImage ? 'Wird gespeichert...' : 'Bild hochladen'}
+              <button 
+                onClick={uploadProfilePicture} 
+                disabled={uploadingImage || !image} 
+                className={`w-full text-white font-bold py-2.5 rounded-xl transition shadow-sm ${uploadingImage || !image ? 'bg-orange-300 cursor-not-allowed' : 'bg-orange-500 hover:bg-orange-600'}`}
+              >
+                {uploadingImage ? 'Cloud-Sync läuft...' : 'Bild hochladen'}
               </button>
             </div>
           </div>
 
-          {/* Sektion: Nutzerdaten anzeigen */}
+          {/* User Data Feed */}
           <div className="mb-8">
-            <h3 className="font-bold text-gray-700 mb-3 text-sm uppercase tracking-wider">Deine Daten</h3>
-            <div className="space-y-2 text-gray-600 text-sm">
-              <p><span className="font-semibold text-gray-800">Nutzername:</span> @{userData?.benutzername}</p>
+            <h3 className="font-bold text-gray-700 mb-3 text-sm uppercase tracking-wider">Metadaten</h3>
+            <div className="space-y-2 text-gray-600 text-sm bg-gray-50 p-4 rounded-2xl border border-gray-100">
+              <p><span className="font-semibold text-gray-800">Handle:</span> @{userData?.benutzername}</p>
               <p><span className="font-semibold text-gray-800">Name:</span> {userData?.vorname} {userData?.nachname}</p>
-              <p><span className="font-semibold text-gray-800">E-Mail:</span> {user?.email}</p>
+              <p><span className="font-semibold text-gray-800">Auth-ID:</span> {user?.email}</p>
             </div>
           </div>
 
-          {/* Sektion: Account-Sicherheit */}
+          {/* Security & Access Management */}
           <div className="mb-8">
             <h3 className="font-bold text-gray-700 mb-3 text-sm uppercase tracking-wider">Sicherheit</h3>
             <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 space-y-5">
               
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Passwort ändern</label>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Zugangsdaten ändern</label>
+                
+                {/* Security Requirement: Abfrage des alten Passworts */}
                 <input
                   type="password"
-                  placeholder="Neues Passwort..."
+                  placeholder="Aktuelles Passwort"
+                  value={oldPassword}
+                  onChange={(e) => setOldPassword(e.target.value)}
+                  className="w-full bg-white border border-gray-200 px-4 py-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-orange-400 mb-2"
+                />
+                
+                <input
+                  type="password"
+                  placeholder="Neues Passwort (min. 12 Zeichen)"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   className="w-full bg-white border border-gray-200 px-4 py-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-orange-400 mb-2"
                 />
+                
                 <button
                   onClick={handlePasswordChange}
-                  disabled={isChangingPassword || !newPassword}
-                  className={`w-full font-bold py-2.5 rounded-xl transition shadow-sm text-sm ${isChangingPassword || !newPassword ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-orange-100 text-orange-700 hover:bg-orange-200'}`}
+                  disabled={isChangingPassword || !oldPassword || !newPassword}
+                  className={`w-full font-bold py-2.5 rounded-xl transition shadow-sm text-sm ${isChangingPassword || !oldPassword || !newPassword ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-orange-100 text-orange-700 hover:bg-orange-200'}`}
                 >
-                  {isChangingPassword ? 'Wird geändert...' : '🔑 Passwort aktualisieren'}
+                  {isChangingPassword ? 'Wird geprüft...' : '🔒 Sicher aktualisieren'}
                 </button>
+                
+                {/* Status-Feedback (Conditional) */}
                 {passwordStatus.msg && (
-                  <p className={`text-xs font-bold text-center mt-2 leading-tight ${passwordStatus.type === 'error' ? 'text-red-500' : 'text-green-600'}`}>
+                  <p className={`text-xs font-bold text-center mt-3 leading-tight ${passwordStatus.type === 'error' ? 'text-red-500' : 'text-green-600'}`}>
                     {passwordStatus.msg}
                   </p>
                 )}
@@ -223,6 +258,7 @@ export const Sidebar = ({ user, userData, setUserData, isOpen, onClose, onLogout
 
               <hr className="border-gray-200" />
 
+              {/* Data Deletion / GDPR Compliance */}
               <div>
                 <label className="block text-xs font-bold text-red-400 uppercase tracking-wider mb-2">Gefahrenzone</label>
                 <button onClick={handleDeleteAccount} className="w-full bg-white text-red-500 border border-red-200 px-4 py-3 rounded-xl font-bold shadow-sm hover:bg-red-50 transition flex justify-center items-center gap-2 text-sm">
@@ -233,25 +269,28 @@ export const Sidebar = ({ user, userData, setUserData, isOpen, onClose, onLogout
             </div>
           </div>
 
-          {/* Sektion: Re-Engageability / Push */}
+          {/* PWA Pillar: Re-Engageability */}
           <div className="mb-8">
-            <h3 className="font-bold text-gray-700 mb-3 text-sm uppercase tracking-wider">Benachrichtigungen</h3>
+            <h3 className="font-bold text-gray-700 mb-3 text-sm uppercase tracking-wider">Re-Engageability</h3>
             <button 
               onClick={requestNotificationPermission} 
-              className="w-full bg-blue-50 text-blue-600 border border-blue-200 px-4 py-3 rounded-xl font-bold shadow-sm hover:bg-blue-100 transition flex justify-center items-center gap-2"
+              className="w-full bg-blue-50 text-blue-600 border border-blue-200 px-4 py-3 rounded-xl font-bold shadow-sm hover:bg-blue-100 transition flex justify-center items-center gap-2 text-sm"
             >
-              🔔 Push-Nachrichten erlauben
+              🔔 Web Push API aktivieren
             </button>
-            <p className="text-xs text-gray-400 mt-2 text-center">Erfahre sofort, wenn jemand in deiner Nähe ein Treffen plant.</p>
+            <p className="text-xs text-gray-400 mt-2 text-center leading-relaxed">
+              Erfahre sofort über Cloud Messaging (FCM), wenn jemand in deiner Nähe ein Treffen plant.
+            </p>
           </div>
         </div>
 
         {/* Footer: Session Management */}
         <div className="p-6 border-t border-gray-100 bg-gray-50 flex flex-col gap-3">
-          <button onClick={onLogout} className="w-full bg-red-100 text-red-600 px-4 py-3 rounded-xl font-bold shadow-sm hover:bg-red-200 transition flex justify-center items-center gap-2">
-            👋 Komplett abmelden
+          <button onClick={onLogout} className="w-full bg-red-100 text-red-600 px-4 py-3 rounded-xl font-bold shadow-sm hover:bg-red-200 transition flex justify-center items-center gap-2 text-sm">
+            👋 Session beenden (Logout)
           </button>
         </div>
+        
       </div>
     </>
   );

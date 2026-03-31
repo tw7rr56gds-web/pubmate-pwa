@@ -8,47 +8,53 @@ import { Sidebar } from './components/Sidebar';
 import { Events } from './components/Events'; 
 import { CreateEvent } from './components/CreateEvent';
 
+/**
+ * MAIN APPLICATION COMPONENT (ENTRY POINT)
+ * Orchestriert das State Management, die Routen-Logik (via Conditional Rendering)
+ * und die Integration der Mobile Backend as a Service (MBaaS) Infrastruktur.
+ */
 function App() {
-  // --- STATE MANAGEMENT ---
-  // Verwaltung des globalen Anwendungszustands (Reactivity)
+  // --- REACTIVE STATE MANAGEMENT ---
+  // Verwaltung des globalen Anwendungszustands zur synchronen UI-Aktualisierung
   const [user, setUser] = useState(null);
   const [userData, setUserData] = useState(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showCreateEvent, setShowCreateEvent] = useState(false);
 
-  // --- LOCATION SERVICES ---
-  // Einbindung des benutzerdefinierten Location-Hooks für native Gerätefunktionen
+  // --- NATIVE DEVICE APIs & LOCATION SERVICES ---
+  // Einbindung des benutzerdefinierten Hooks für Hardware-Sensoren (GPS)
   const { location: gpsLocation, error: locError, isLoading: locLoading } = useLocation();
   const [activeLocation, setActiveLocation] = useState(null); 
   const [searchCity, setSearchCity] = useState("");
   const [radius, setRadius] = useState(5); 
 
-  // --- EFFECT HOOKS ---
-  // Überwacht den Authentifizierungsstatus des Nutzers über Firebase Auth
+  // --- MBAAS: FIREBASE AUTHENTICATION & DATABASE ---
+  // Lifecycle Hook: Überwacht den Authentifizierungsstatus in Echtzeit
   useEffect(() => {
+    // onAuthStateChanged baut einen persistenten Listener zum Firebase-Backend auf
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       setUser(u);
       if (u) {
-        // Lädt zusätzliche Nutzerdaten (z.B. Profilbild, Name) asynchron aus Firestore
+        // Asynchrones Laden des erweiterten Nutzerprofils aus der NoSQL-Datenbank
         const docSnap = await getDoc(doc(db, "users", u.uid));
         if (docSnap.exists()) setUserData(docSnap.data());
       } else {
         setUserData(null);
       }
     });
-    // Cleanup-Funktion zum Beenden des Listeners beim Unmounten
+    // Memory Leak Prevention: Cleanup des Listeners beim Unmounten der App
     return () => unsubscribe();
   }, []);
 
-  // Synchronisiert die aktive Such-Location initial mit den echten GPS-Daten
+  // Synchronisiert die aktive Location beim Initial-Load mit den Hardware-GPS-Daten
   useEffect(() => {
     if (gpsLocation && !activeLocation) {
       setActiveLocation(gpsLocation);
     }
   }, [gpsLocation, activeLocation]);
 
-  // --- HANDLER FUNCTIONS ---
-  // Nutzt die Nominatim API (OpenStreetMap) für Geocoding (Stadtname zu Koordinaten)
+  // --- EXTERNAL APIs: GEOCODING ---
+  // Nutzt die Nominatim API (OpenStreetMap) zur Umwandlung von Ortsnamen in Koordinaten
   const handleCitySearch = async (e) => {
     e.preventDefault();
     if (!searchCity) return;
@@ -77,21 +83,22 @@ function App() {
     setIsSettingsOpen(false);
   };
 
-  // --- DECLARATIVE UI RENDER ---
+  // --- COMPONENT TREE & DECLARATIVE UI ---
+  // Nutzt Tailwind CSS für das Responsive Web Design (Mobile-First-Ansatz)
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center p-4 relative overflow-x-hidden pb-20">
       
       <header className="w-full max-w-md flex justify-between items-center mb-6 mt-4 z-10">
         <h1 className="text-3xl font-black text-orange-500 tracking-tighter">PubMate 🍻</h1>
         
-        {/* Conditional Rendering: Zeigt Profil-Infos nur an, wenn Daten geladen sind */}
+        {/* Conditional Rendering: Zeigt Profil-Infos nur bei erfolgreichem Auth-State */}
         {user && userData && (
           <div className="flex items-center gap-3">
             {userData.profilbild_url ? (
               <img 
                 src={userData.profilbild_url} 
                 alt="Profil" 
-                loading="lazy" /* Progressive Enhancement: Verzögertes Laden von Bildern */
+                loading="lazy" /* Progressive Enhancement: Optimiert First Meaningful Paint */
                 className="w-10 h-10 rounded-full object-cover border-2 border-orange-200 shadow-sm" 
               />
             ) : (
@@ -106,7 +113,7 @@ function App() {
         )}
       </header>
 
-      {/* Externe Sidebar-Komponente für Einstellungen und Sicherheit */}
+      {/* Component Composition: Auslagerung der Sidebar-Logik für bessere Wartbarkeit */}
       {user && (
         <Sidebar 
           user={user} 
@@ -119,11 +126,12 @@ function App() {
       )}
 
       <main className="w-full max-w-md space-y-6">
-        {/* Conditional Rendering: Switch zwischen Login-Screen und Haupt-Dashboard */}
+        {/* Haupt-Routing-Logik: Login-Screen vs. User-Dashboard */}
         {!user ? (
           <AuthScreen />
         ) : (
           <>
+            {/* Dashboard Welcome Card */}
             <div className="bg-white p-6 rounded-3xl shadow-sm border-l-4 border-orange-400">
               <h2 className="text-2xl font-black text-gray-800">
                 Gude, {userData?.vorname || 'Kumpel'}! 👋
@@ -131,7 +139,7 @@ function App() {
               <p className="text-gray-500 text-sm mt-1">Lass uns jemanden zum Anstoßen finden.</p>
             </div>
 
-            {/* Location Dashboard: Formular zur Steuerung des Daten-Feeds */}
+            {/* Location Dashboard: Dynamische Steuerung des Radius und Geocodings */}
             <div className="bg-white p-5 rounded-3xl shadow-md border-2 border-orange-100">
               <div className="flex flex-col gap-4">
                 
@@ -175,6 +183,7 @@ function App() {
               </div>
             </div>
 
+            {/* Action Button: Öffnet das Modal zur Event-Erstellung */}
             <button 
               onClick={() => setShowCreateEvent(true)}
               className="w-full bg-orange-500 text-white font-black py-4 rounded-2xl shadow-lg hover:bg-orange-600 transition transform hover:scale-[1.02]"
@@ -182,7 +191,7 @@ function App() {
               + Neues Treffen planen
             </button>
 
-            {/* Zentrale Event-Feed-Komponente */}
+            {/* Realtime Event Feed */}
             <div className="bg-white p-6 rounded-3xl shadow-md">
               <h3 className="font-bold text-lg mb-4 text-gray-800">Geplante Treffen</h3>
               <Events 
@@ -195,7 +204,7 @@ function App() {
         )}
       </main>
 
-      {/* Überlagertes Modal zum Erstellen von neuen Events */}
+      {/* Modal: Überlagerte Komponente für konsistente UX */}
       {showCreateEvent && (
         <CreateEvent 
           user={user} 
