@@ -1,31 +1,44 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { db, storage, messaging } from '../firebase'; 
 import { doc, updateDoc, deleteDoc } from 'firebase/firestore'; 
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { deleteUser, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth'; 
-import { getToken } from 'firebase/messaging'; 
+import { getToken, onMessage } from 'firebase/messaging'; 
 
 /**
  * SIDEBAR COMPONENT (USER PREFERENCES & SECURITY)
- * Verwaltet das erweiterte Nutzerprofil, Cross-Platform-Features (Kamera) 
- * und kritische Account-Operationen (Sicherheit/Re-Authentifizierung).
+ * Verwaltet das erweiterte Nutzerprofil, Cross-Platform-Features (Kamera), 
+ * kritische Account-Operationen und das Push-Notification-Lifecycle-Management.
  */
 export const Sidebar = ({ user, userData, setUserData, isOpen, onClose, onLogout }) => {
   // --- REACTIVE STATE MANAGEMENT ---
-  // UI-Zustände für asynchrone Operationen (Uploads, Security-Checks)
   const [image, setImage] = useState(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   
-  // State für die sichere Passwort-Änderung (Re-Authentication Pattern)
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [passwordStatus, setPasswordStatus] = useState({ type: '', msg: '' });
 
+  // --- PWA: FOREGROUND NOTIFICATION LISTENER ---
+  useEffect(() => {
+    const unsubscribe = onMessage(messaging, (payload) => {
+      console.log("Nachricht im Foreground empfangen:", payload);
+      const title = payload.notification?.title || "Neue Aktivität";
+      const options = {
+        body: payload.notification?.body || "Es gibt Neuigkeiten in deiner Umgebung.",
+        icon: "/icon-192x192.png"
+      };
+      
+      if ("Notification" in window && Notification.permission === "granted") {
+        new Notification(title, options);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
   // --- CROSS-PLATFORM DEVELOPMENT: CAPACITOR ---
-  // Zugriff auf native Hardware (Kamera/Dateisystem) über eine einheitliche API.
-  // Brückt die Lücke zwischen Web-Technologie und nativen Gerätefunktionen.
   const takePicture = async () => {
     try {
       const photo = await Camera.getPhoto({
@@ -34,8 +47,6 @@ export const Sidebar = ({ user, userData, setUserData, isOpen, onClose, onLogout
         resultType: CameraResultType.Uri,
         source: CameraSource.Prompt 
       });
-
-      // Konvertierung der URI-Referenz in ein übertragbares Blob-Objekt
       const response = await fetch(photo.webPath);
       const blob = await response.blob();
       setImage(blob);
@@ -45,24 +56,17 @@ export const Sidebar = ({ user, userData, setUserData, isOpen, onClose, onLogout
   };
 
   // --- MBAAS: STORAGE & FIRESTORE SYNCHRONIZATION ---
-  // Lädt binäre Daten (Bilder) in den Firebase Storage und aktualisiert 
-  // synchron die Metadaten in der NoSQL-Datenbank (Firestore).
   const uploadProfilePicture = async () => {
     if (!image) return alert("Bitte wähle zuerst ein Bild aus.");
-    
     setUploadingImage(true);
     const imageRef = ref(storage, `profile_pictures/${user.uid}`);
-    
     try {
       await uploadBytes(imageRef, image);
       const url = await getDownloadURL(imageRef);
-      
       const userDocRef = doc(db, "users", user.uid);
       await updateDoc(userDocRef, { profilbild_url: url });
-      
-      // Reagiert sofort: Lokaler State wird aktualisiert (Optimistic UI Update)
       setUserData((prev) => ({ ...prev, profilbild_url: url }));
-      alert("Profilbild erfolgreich aktualisiert!");
+      alert("Profilbild erfolgreich aktualisiert.");
       setImage(null);
     } catch (error) {
       alert("Fehler beim Upload: " + error.message);
@@ -71,8 +75,7 @@ export const Sidebar = ({ user, userData, setUserData, isOpen, onClose, onLogout
     }
   };
 
-  // --- PWA: RE-ENGAGEABILITY & PUSH NOTIFICATIONS ---
-  // Implementiert die vierte PWA-Säule: Laufzeit-Prüfung und Opt-in für Push-Nachrichten.
+  // --- PWA: PUSH NOTIFICATIONS (SINGLE-WORKER ARCHITECTURE) ---
   const requestNotificationPermission = async () => {
     if (!("Notification" in window)) {
       alert("Dein Browser unterstützt die Web Notification API nicht.");
@@ -80,13 +83,19 @@ export const Sidebar = ({ user, userData, setUserData, isOpen, onClose, onLogout
     }
 
     try {
-      // Explizite Berechtigungsanfrage (User Consent)
       const permission = await Notification.requestPermission();
       if (permission === "granted") {
         
-        // VAPID-Key Injektion über sichere Umgebungsvariablen
+        // 1,0-ARCHITEKTUR: Wir warten auf den existierenden VitePWA Worker!
+        // Dies verhindert den Token-Tod und Worker-Konflikte.
+        const registration = await navigator.serviceWorker.ready;
         const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
-        const currentToken = await getToken(messaging, { vapidKey });
+        
+        // Zwingende Zuweisung des Tokens an die persistente Vite-Registrierung
+        const currentToken = await getToken(messaging, { 
+          vapidKey: vapidKey,
+          serviceWorkerRegistration: registration 
+        });
         
         if (currentToken) {
           console.log("FCM Device Token:", currentToken);
@@ -103,39 +112,24 @@ export const Sidebar = ({ user, userData, setUserData, isOpen, onClose, onLogout
   };
 
   // --- MBAAS SECURITY: RE-AUTHENTICATION PATTERN ---
-  // Schützt sensitive Operationen vor Session-Hijacking durch Anforderung 
-  // der aktuellen Credentials (altes Passwort), bevor Änderungen am Account erlaubt sind.
   const handlePasswordChange = async () => {
     if (!oldPassword || !newPassword) return;
-
-    // Client-seitige Validierung zur Reduzierung von Backend-Last
     const passwordRegex = /^(?=.*[A-Z])(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{12,}$/;
     if (!passwordRegex.test(newPassword)) {
-      setPasswordStatus({ 
-        type: 'error', 
-        msg: 'Mindestens 12 Zeichen, 1 Großbuchstabe und 1 Sonderzeichen erforderlich.' 
-      });
+      setPasswordStatus({ type: 'error', msg: 'Mindestens 12 Zeichen, 1 Großbuchstabe und 1 Sonderzeichen erforderlich.' });
       return;
     }
-
     setIsChangingPassword(true);
     setPasswordStatus({ type: '', msg: '' });
 
     try {
-      // SCHRITT 1: Generierung eines Credential-Tickets mit dem alten Passwort
       const credential = EmailAuthProvider.credential(user.email, oldPassword);
-      
-      // SCHRITT 2: Re-Authentifizierung gegen das Firebase Backend
       await reauthenticateWithCredential(user, credential);
-
-      // SCHRITT 3: Ausführung der sensitiven Operation (Passwort-Update)
       await updatePassword(user, newPassword);
-      
-      setPasswordStatus({ type: 'success', msg: 'Passwort erfolgreich und sicher aktualisiert! ✅' });
+      setPasswordStatus({ type: 'success', msg: 'Passwort erfolgreich und sicher aktualisiert.' });
       setOldPassword(''); 
       setNewPassword(''); 
     } catch (error) {
-      // Differenziertes Error-Handling für bessere User Experience
       if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
         setPasswordStatus({ type: 'error', msg: 'Das aktuelle Passwort ist nicht korrekt.' });
       } else {
@@ -146,15 +140,12 @@ export const Sidebar = ({ user, userData, setUserData, isOpen, onClose, onLogout
     }
   };
 
-  // Löschen des Accounts (erfordert idealerweise ebenfalls Re-Authentifizierung, 
-  // hier als erweiterte Warnung implementiert).
   const handleDeleteAccount = async () => {
     const confirmDelete = window.confirm("WARNUNG: Dies löscht alle deine Daten unwiderruflich. Fortfahren?");
     if (!confirmDelete) return;
-
     try {
-      // Gewährleistung der referentiellen Integrität: Erst DB-Eintrag, dann Auth-Identität löschen
-      await deleteDoc(doc(db, "users", user.uid));
+      const userDocRef = doc(db, "users", user.uid);
+      await deleteDoc(userDocRef);
       await deleteUser(user);
       alert("Account erfolgreich entfernt.");
     } catch (error) {
@@ -166,13 +157,11 @@ export const Sidebar = ({ user, userData, setUserData, isOpen, onClose, onLogout
     }
   };
 
-  // --- DECLARATIVE UI RENDERING ---
+  // --- DECLARATIVE UI RENDERING (ORIGINAL DESIGN) ---
   return (
     <>
-      {/* Dimmer-Overlay (UX Best Practice) */}
       {isOpen && <div className="fixed inset-0 bg-black/40 z-40 transition-opacity" onClick={onClose}></div>}
       
-      {/* Off-Canvas Menü (Responsive Layout Model) */}
       <div className={`fixed top-0 right-0 h-full w-80 bg-white z-50 shadow-2xl transform transition-transform duration-300 ease-in-out flex flex-col ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
         <div className="p-6 flex-1 overflow-y-auto">
           
@@ -181,31 +170,22 @@ export const Sidebar = ({ user, userData, setUserData, isOpen, onClose, onLogout
             <button onClick={onClose} className="text-gray-400 hover:text-red-500 text-3xl leading-none" aria-label="Schließen">&times;</button>
           </div>
 
-          {/* Device Integration: Camera / Profilbild */}
           <div className="mb-8 bg-gray-50 p-4 rounded-2xl border border-gray-100">
             <h3 className="font-bold text-gray-700 mb-3 text-sm uppercase tracking-wider">Profilbild</h3>
             <div className="flex flex-col gap-3">
               {image ? (
-                <p className="text-sm text-green-600 font-bold text-center">✅ Bild bereit zum Upload</p>
+                <p className="text-sm text-green-600 font-bold text-center">Bild bereit zum Upload</p>
               ) : (
-                <button 
-                  onClick={takePicture}
-                  className="w-full bg-orange-100 text-orange-700 font-bold py-2.5 rounded-xl shadow-sm hover:bg-orange-200 transition"
-                >
-                  📸 Foto aufnehmen / wählen
+                <button onClick={takePicture} className="w-full bg-orange-100 text-orange-700 font-bold py-2.5 rounded-xl shadow-sm hover:bg-orange-200 transition">
+                  Foto aufnehmen / wählen
                 </button>
               )}
-              <button 
-                onClick={uploadProfilePicture} 
-                disabled={uploadingImage || !image} 
-                className={`w-full text-white font-bold py-2.5 rounded-xl transition shadow-sm ${uploadingImage || !image ? 'bg-orange-300 cursor-not-allowed' : 'bg-orange-500 hover:bg-orange-600'}`}
-              >
+              <button onClick={uploadProfilePicture} disabled={uploadingImage || !image} className={`w-full text-white font-bold py-2.5 rounded-xl transition shadow-sm ${uploadingImage || !image ? 'bg-orange-300 cursor-not-allowed' : 'bg-orange-500 hover:bg-orange-600'}`}>
                 {uploadingImage ? 'Cloud-Sync läuft...' : 'Bild hochladen'}
               </button>
             </div>
           </div>
 
-          {/* User Data Feed */}
           <div className="mb-8">
             <h3 className="font-bold text-gray-700 mb-3 text-sm uppercase tracking-wider">Metadaten</h3>
             <div className="space-y-2 text-gray-600 text-sm bg-gray-50 p-4 rounded-2xl border border-gray-100">
@@ -215,68 +195,34 @@ export const Sidebar = ({ user, userData, setUserData, isOpen, onClose, onLogout
             </div>
           </div>
 
-          {/* Security & Access Management */}
           <div className="mb-8">
             <h3 className="font-bold text-gray-700 mb-3 text-sm uppercase tracking-wider">Sicherheit</h3>
             <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 space-y-5">
-              
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Zugangsdaten ändern</label>
-                
-                {/* Security Requirement: Abfrage des alten Passworts */}
-                <input
-                  type="password"
-                  placeholder="Aktuelles Passwort"
-                  value={oldPassword}
-                  onChange={(e) => setOldPassword(e.target.value)}
-                  className="w-full bg-white border border-gray-200 px-4 py-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-orange-400 mb-2"
-                />
-                
-                <input
-                  type="password"
-                  placeholder="Neues Passwort (min. 12 Zeichen)"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full bg-white border border-gray-200 px-4 py-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-orange-400 mb-2"
-                />
-                
-                <button
-                  onClick={handlePasswordChange}
-                  disabled={isChangingPassword || !oldPassword || !newPassword}
-                  className={`w-full font-bold py-2.5 rounded-xl transition shadow-sm text-sm ${isChangingPassword || !oldPassword || !newPassword ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-orange-100 text-orange-700 hover:bg-orange-200'}`}
-                >
-                  {isChangingPassword ? 'Wird geprüft...' : '🔒 Sicher aktualisieren'}
+                <input type="password" placeholder="Aktuelles Passwort" value={oldPassword} onChange={(e) => setOldPassword(e.target.value)} className="w-full bg-white border border-gray-200 px-4 py-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-orange-400 mb-2" />
+                <input type="password" placeholder="Neues Passwort (min. 12 Zeichen)" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full bg-white border border-gray-200 px-4 py-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-orange-400 mb-2" />
+                <button onClick={handlePasswordChange} disabled={isChangingPassword || !oldPassword || !newPassword} className={`w-full font-bold py-2.5 rounded-xl transition shadow-sm text-sm ${isChangingPassword || !oldPassword || !newPassword ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-orange-100 text-orange-700 hover:bg-orange-200'}`}>
+                  {isChangingPassword ? 'Wird geprüft...' : 'Sicher aktualisieren'}
                 </button>
-                
-                {/* Status-Feedback (Conditional) */}
                 {passwordStatus.msg && (
-                  <p className={`text-xs font-bold text-center mt-3 leading-tight ${passwordStatus.type === 'error' ? 'text-red-500' : 'text-green-600'}`}>
-                    {passwordStatus.msg}
-                  </p>
+                  <p className={`text-xs font-bold text-center mt-3 leading-tight ${passwordStatus.type === 'error' ? 'text-red-500' : 'text-green-600'}`}>{passwordStatus.msg}</p>
                 )}
               </div>
-
               <hr className="border-gray-200" />
-
-              {/* Data Deletion / GDPR Compliance */}
               <div>
                 <label className="block text-xs font-bold text-red-400 uppercase tracking-wider mb-2">Gefahrenzone</label>
                 <button onClick={handleDeleteAccount} className="w-full bg-white text-red-500 border border-red-200 px-4 py-3 rounded-xl font-bold shadow-sm hover:bg-red-50 transition flex justify-center items-center gap-2 text-sm">
-                  🚨 Account unwiderruflich löschen
+                  Account unwiderruflich löschen
                 </button>
               </div>
-
             </div>
           </div>
 
-          {/* PWA Pillar: Re-Engageability */}
           <div className="mb-8">
             <h3 className="font-bold text-gray-700 mb-3 text-sm uppercase tracking-wider">Re-Engageability</h3>
-            <button 
-              onClick={requestNotificationPermission} 
-              className="w-full bg-blue-50 text-blue-600 border border-blue-200 px-4 py-3 rounded-xl font-bold shadow-sm hover:bg-blue-100 transition flex justify-center items-center gap-2 text-sm"
-            >
-              🔔 Web Push API aktivieren
+            <button onClick={requestNotificationPermission} className="w-full bg-blue-50 text-blue-600 border border-blue-200 px-4 py-3 rounded-xl font-bold shadow-sm hover:bg-blue-100 transition flex justify-center items-center gap-2 text-sm">
+              Web Push API aktivieren
             </button>
             <p className="text-xs text-gray-400 mt-2 text-center leading-relaxed">
               Erfahre sofort über Cloud Messaging (FCM), wenn jemand in deiner Nähe ein Treffen plant.
@@ -284,13 +230,11 @@ export const Sidebar = ({ user, userData, setUserData, isOpen, onClose, onLogout
           </div>
         </div>
 
-        {/* Footer: Session Management */}
         <div className="p-6 border-t border-gray-100 bg-gray-50 flex flex-col gap-3">
           <button onClick={onLogout} className="w-full bg-red-100 text-red-600 px-4 py-3 rounded-xl font-bold shadow-sm hover:bg-red-200 transition flex justify-center items-center gap-2 text-sm">
-            👋 Session beenden (Logout)
+            Session beenden (Logout)
           </button>
         </div>
-        
       </div>
     </>
   );

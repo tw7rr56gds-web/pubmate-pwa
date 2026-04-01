@@ -3,16 +3,15 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 /**
- * VITE BUILD & PWA CONFIGURATION
- * Zentrale Konfigurationsdatei für den Modul-Bundler und die Progressive Web App.
- * Implementiert automatisiert die PWA-Säulen "Network Independence" (Offline-Fähigkeit) 
- * und "Installable" (Manifest) in den Build- und Deployment-Prozess.
+ * VITE BUILD & PWA ORCHESTRATION
+ * Zentrale Konfigurationsinstanz für das Asset-Bundling und die PWA-Spezifikationen.
+ * Implementiert die Single-Worker-Architektur, um Konflikte zwischen dem 
+ * Offline-Caching (Workbox) und dem Cloud Messaging (FCM) zu eliminieren.
  */
 export default defineConfig({
   // --- DISTRIBUTION / HOSTING ---
   // GitHub Pages hostet Repositories in Unterordnern. 
-  // Dieser Base-Pfad referenziert exakt den Repository-Namen und verhindert 
-  // 404-Fehler (White Screen) beim Auflösen von relativen Asset-Pfaden.
+  // Dieser Base-Pfad referenziert exakt den Repository-Namen und verhindert 404-Fehler.
   base: '/pubmate-pwa/', 
 
   plugins: [
@@ -20,40 +19,37 @@ export default defineConfig({
     
     // --- PWA GENERATOR (Vite-Plugin-PWA) ---
     VitePWA({
-      // Automatisches Update des Service Workers bei neuem Deployment, 
-      // um "Stale Cache" (veraltete App-Versionen) beim Nutzer zu vermeiden.
       registerType: 'autoUpdate',
       
-      // Aktiviert den Service Worker auch im lokalen Entwicklungsmodus ('npm run dev').
-      // Ermöglicht das Testen von Caching-Strategien ohne Production-Builds.
       devOptions: {
         enabled: true
       },
 
-      // --- NETWORK INDEPENDENCE: WORKBOX & CACHING ---
+      // --- NETWORK INDEPENDENCE & MESSAGING INTEGRATION ---
       workbox: {
-        // Precaching: Lädt alle statischen UI-Ressourcen (HTML, JS, CSS, Media) 
-        // sofort bei der Installation in den lokalen Cache (Offline-First-Architektur).
+        // Precaching: Lädt statische UI-Ressourcen sofort in den lokalen Cache.
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        
+        // DER MASTER-FIX: Injektion des Firebase-Messaging-Scripts in den generierten Worker.
+        // Verhindert die Instanziierung von zwei konkurrierenden Service Workern.
+        importScripts: ['firebase-messaging-sw.js'],
         
         // Runtime Caching: Dynamische Interzeption für externe API-Calls.
         runtimeCaching: [
           {
-            // Abfangen aller asynchronen Anfragen an die Overpass API (Location Data).
+            // Abfangen asynchroner Anfragen an die Overpass API (Location Data).
             urlPattern: /^https:\/\/overpass-api\.de\/.*/i,
             
-            // Caching-Strategie 'NetworkFirst': 
-            // Priorisiert aktuelle Server-Daten. Fällt die Verbindung aus (Offline), 
-            // dient der Cache als Fallback zur Aufrechterhaltung der Funktionalität.
+            // Strategie 'NetworkFirst' mit Fallback auf den Cache.
             handler: 'NetworkFirst',
             options: {
               cacheName: 'osm-api-cache',
               expiration: {
-                maxEntries: 10,                 // Limitiert Speicherbedarf auf dem Endgerät
-                maxAgeSeconds: 60 * 60 * 24 * 7 // Cache-Invalidierung nach 7 Tagen
+                maxEntries: 10,
+                maxAgeSeconds: 60 * 60 * 24 * 7 // 7 Tage Validität
               },
               cacheableResponse: {
-                statuses: [0, 200]              // Verhindert das Caching von Fehlercodes
+                statuses: [0, 200]
               }
             }
           }
@@ -61,21 +57,19 @@ export default defineConfig({
       },
 
       // --- INSTALLABLE, LINKABLE, DISCOVERABLE ---
-      // Dynamische Injektion des Web App Manifests in den Build-Output.
-      // Definiert die nativ-wirkende UX auf dem Homescreen des Endgeräts.
       manifest: {
         name: 'PubMate',
         short_name: 'PubMate',
         description: 'Finde Leute zum Anstoßen in deiner Nähe!',
         theme_color: '#f97316',
         background_color: '#ffffff',
-        display: 'standalone', // Entfernt Browser-Chrome für eine immersive Fullscreen-UX
+        display: 'standalone',
         icons: [
           {
             src: 'icon-192x192.png', 
             sizes: '192x192',
             type: 'image/png',
-            purpose: 'any maskable' // Best Practice für adaptive Android-Icons
+            purpose: 'any maskable'
           },
           {
             src: 'icon-512x512.png', 
