@@ -2,13 +2,12 @@
 
 🌍 **Live Demo:** [https://tw7rr56gds-web.github.io/pubmate-pwa/](https://tw7rr56gds-web.github.io/pubmate-pwa/)
 
-> **Seminararbeit im Modul "Development of Mobile Business Applications"**
 > Ein standortbasiertes soziales Netzwerk zur Förderung der urbanen Interaktion. 
 
 ## 1. Motivation & Idee
 Die Entwicklung mobiler Applikationen erfordert die Berücksichtigung spezifischer Anforderungen wie den Nutzerkontext, begrenzte Hardware-Ressourcen und stark fluktuierende Netzwerkanbindungen. Da traditionelle native Apps oft mit fragmentierten Code-Basen und hohen Entwicklungsaufwänden einhergehen, wurde **PubMate** architektonisch als Progressive Web App (PWA) konzipiert. 
 
-PubMate adressiert ein alltägliches soziales Phänomen im urbanen Raum: Die Applikation ermöglicht es Nutzern, standortbasiert spontane Treffen in Bars, Pubs oder Restaurants zu organisieren oder bestehenden Runden beizutreten. Das Leitmotiv der Anwendung lautet: *"Niemand sollte alleine trinken müssen."*
+PubMate adressiert ein alltägliches soziales Phänomen im urbanen Raum: Die App ermöglicht es Nutzern, standortbasiert spontane Treffen in Bars, Pubs oder Restaurants zu organisieren oder bestehenden Runden beizutreten. Das Leitmotiv der Anwendung lautet: *"Niemand sollte alleine trinken müssen."*
 
 ---
 
