@@ -20,8 +20,7 @@ Die Anwendung basiert auf einer modernen Cross-Plattform-Architektur und nutzt d
 * **MBaaS (Backend):** Firebase als Cloud-basierter Dienst für Echtzeit-Datenhaltung (Firestore), Identitätsverwaltung (Auth) und Cloud Messaging (FCM).
 * **Native Container:** Ionic Capacitor zur Einbettung der Web-Applikation in einen nativen WebView-Container, um Hardware-Schnittstellen (wie die Kamera) über eine einheitliche API anzusteuern.
 
-graph TD
-    %% Styling
+flowchart TD
     classDef client fill:#e0f2fe,stroke:#ea580c,stroke-width:2px,color:#000;
     classDef middleware fill:#fef3c7,stroke:#ea580c,stroke-width:2px,color:#000;
     classDef hardware fill:#f3f4f6,stroke:#4b5563,stroke-width:2px,color:#000;
@@ -31,7 +30,7 @@ graph TD
     subgraph ClientLayer ["📱 Client-Schicht (React SPA)"]
         UI["🎨 Deklaratives UI (Tailwind)"]:::client
         State["⚙️ State Management (Hooks)"]:::client
-        UI <-->|Data Binding| State
+        UI <-->|"Data Binding"| State
     end
 
     subgraph MiddlewareLayer ["🌐 PWA & Cross-Platform Layer"]
@@ -56,26 +55,21 @@ graph TD
         OSM["🗺️ Overpass / Nominatim (OSM)"]:::external
     end
 
-    %% Verbindungen Frontend -> Middleware/Hardware
-    State -->|Fetch-Proxy| SW
-    SW <-->|Precaching| Cache
-    State -->|Hardware Call| Capacitor
-    Capacitor -->|Foto-Capture| Cam
-    State -->|Sensordaten| GPS
+    State -->|"Fetch-Proxy"| SW
+    SW <-->|"Precaching"| Cache
+    State -->|"Hardware Call"| Capacitor
+    Capacitor -->|"Foto-Capture"| Cam
+    State -->|"Sensordaten"| GPS
 
-    %% Verbindungen Middleware -> Extern
-    SW -->|NetworkFirst Fallback| OSM
+    SW -->|"NetworkFirst Fallback"| OSM
 
-    %% Verbindungen Frontend -> MBaaS
-    State <-->|Realtime Sync / CRUD| Firestore
-    State <-->|JWT Validierung| Auth
-    State -->|Asynchroner Upload| Storage
+    State <-->|"Realtime Sync / CRUD"| Firestore
+    State <-->|"JWT Validierung"| Auth
+    State -->|"Asynchroner Upload"| Storage
 
-    %% Hintergrund-Prozesse (PWA)
-    Push -.->|Background Payload| SW
+    Push -.->|"Background Payload"| SW
 
-    %% Security Constraint (RLS)
-    Firestore -.->|Row-Level-Security Validierung| Auth
+    Firestore -.->|"Row-Level-Security Validierung"| Auth
 
 ---
 
