@@ -20,6 +20,63 @@ Die Anwendung basiert auf einer modernen Cross-Plattform-Architektur und nutzt d
 * **MBaaS (Backend):** Firebase als Cloud-basierter Dienst für Echtzeit-Datenhaltung (Firestore), Identitätsverwaltung (Auth) und Cloud Messaging (FCM).
 * **Native Container:** Ionic Capacitor zur Einbettung der Web-Applikation in einen nativen WebView-Container, um Hardware-Schnittstellen (wie die Kamera) über eine einheitliche API anzusteuern.
 
+```mermaid
+graph TD
+    %% Styling (Optional, aber macht es hübscher)
+    classDef client fill:#e0f2fe,stroke:#ea580c,stroke-width:2px,color:#000;
+    classDef middleware fill:#fef3c7,stroke:#ea580c,stroke-width:2px,color:#000;
+    classDef hardware fill:#f3f4f6,stroke:#4b5563,stroke-width:2px,color:#000;
+    classDef cloud fill:#dcfce3,stroke:#16a34a,stroke-width:2px,color:#000;
+    classDef external fill:#fce7f3,stroke:#dc2626,stroke-width:2px,color:#000;
+
+    subgraph ClientLayer ["📱 Client-Schicht (React SPA)"]
+        UI["🎨 Deklaratives UI (Tailwind)"]:::client
+        State["⚙️ State Management (Hooks)"]:::client
+        UI <-->|Data Binding| State
+    end
+
+    subgraph MiddlewareLayer ["🌐 PWA & Cross-Platform Layer"]
+        SW["Service Worker (Workbox + FCM)"]:::middleware
+        Cache["Lokaler Cache (App Shell)"]:::middleware
+        Capacitor["Ionic Capacitor (Native Bridge)"]:::middleware
+    end
+
+    subgraph HardwareLayer ["📳 Endgerät (Device APIs)"]
+        GPS["📍 Geolocation API (Sensor)"]:::hardware
+        Cam["📸 Systemkamera / Galerie"]:::hardware
+    end
+
+    subgraph CloudLayer ["☁️ Google Firebase (MBaaS)"]
+        Auth["🔑 Auth (IAM & Re-Auth)"]:::cloud
+        Firestore["🗃️ Firestore (NoSQL)"]:::cloud
+        Storage["🖼️ Cloud Storage (BLOBs)"]:::cloud
+        Push["📡 Cloud Messaging (FCM)"]:::cloud
+    end
+
+    subgraph ExternalLayer ["🌍 Externe API"]
+        OSM["🗺️ Overpass / Nominatim (OSM)"]:::external
+    end
+
+    %% Verbindungen Frontend -> Middleware/Hardware
+    State -->|Fetch-Proxy| SW
+    SW <-->|Precaching| Cache
+    State -->|Hardware Call| Capacitor
+    Capacitor -->|Foto-Capture| Cam
+    State -->|Sensordaten| GPS
+
+    %% Verbindungen Middleware -> Extern
+    SW -->|NetworkFirst Fallback| OSM
+
+    %% Verbindungen Frontend -> MBaaS
+    State <-->|Realtime Sync / CRUD| Firestore
+    State <-->|JWT Validierung| Auth
+    State -->|Asynchroner Upload| Storage
+
+    %% Hintergrund-Prozesse (PWA)
+    Push -.->|Background Payload| SW
+
+    %% Security Constraint (RLS)
+    Firestore -.->|Row-Level-Security Validierung| Auth
 ---
 
 ## 3. Umsetzung der PWA-Säulen
