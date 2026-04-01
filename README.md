@@ -20,9 +20,8 @@ Die Anwendung basiert auf einer modernen Cross-Plattform-Architektur und nutzt d
 * **MBaaS (Backend):** Firebase als Cloud-basierter Dienst für Echtzeit-Datenhaltung (Firestore), Identitätsverwaltung (Auth) und Cloud Messaging (FCM).
 * **Native Container:** Ionic Capacitor zur Einbettung der Web-Applikation in einen nativen WebView-Container, um Hardware-Schnittstellen (wie die Kamera) über eine einheitliche API anzusteuern.
 
-```mermaid
 graph TD
-    %% Styling (Optional, aber macht es hübscher)
+    %% Styling
     classDef client fill:#e0f2fe,stroke:#ea580c,stroke-width:2px,color:#000;
     classDef middleware fill:#fef3c7,stroke:#ea580c,stroke-width:2px,color:#000;
     classDef hardware fill:#f3f4f6,stroke:#4b5563,stroke-width:2px,color:#000;
@@ -77,6 +76,7 @@ graph TD
 
     %% Security Constraint (RLS)
     Firestore -.->|Row-Level-Security Validierung| Auth
+
 ---
 
 ## 3. Umsetzung der PWA-Säulen
