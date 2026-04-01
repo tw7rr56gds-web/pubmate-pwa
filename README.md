@@ -1,5 +1,7 @@
 # 🍻 PubMate – Die PWA für gesellige Abende
 
+🌍 **Live Demo:** [https://tw7rr56gds-web.github.io/pubmate-pwa/](https://tw7rr56gds-web.github.io/pubmate-pwa/)
+
 > **Seminararbeit im Modul "Development of Mobile Business Applications"**
 > Ein standortbasiertes soziales Netzwerk zur Förderung der urbanen Interaktion. 
 
@@ -74,19 +76,5 @@ $$d = 2r \arcsin\left(\sqrt{\sin^2\left(\frac{\Delta\phi}{2}\right) + \cos(\phi_
 
 *(Wobei r den Erdradius definiert, φ1, φ2 die jeweiligen Breitengrade und Δλ die Differenz der Längengrade darstellen).*
 
----
-
-## 7. Lokale Installation & Deployment
-
-Das Projekt ist für automatisierte CI/CD-Pipelines (Vite Build) vorbereitet, kann jedoch vollständig lokal für Entwicklungszwecke instanziiert werden.
-
-### Voraussetzungen
-* Node.js (v18+)
-* Initialisiertes Firebase-Projekt (Authentifizierung, Firestore, Storage & Messaging aktiviert).
-
-### Setup & Ausführung
-1. **Repository klonen & Abhängigkeiten installieren:**
-   ```bash
-   git clone [https://github.com/tw7rr56gds-web/pubmate-pwa.git](https://github.com/tw7rr56gds-web/pubmate-pwa.git)
-   cd pubmate-pwa
-   npm install
+## 7. Fazit
+Als Quereinsteiger in die Wirtschaftsinformatik, sind solche Vorlesungen trotz der grandiosen Hilfsmittel heutzutage immer eine Herausforderung. Was mich jedoch begeistert: Die Vorlesung ist so aufgebaut, dass sie den Teilnehmerinnen und Teilnehmern von Beginn an jegliche Angst nimmt. Es war insgesamt eine sehr spannende und sehr gute Vorlesung, aus der ich definitiv sehr viel mitnehme. Die Hilfsmittel habe ich ja bereits erwähnt, am Ende bin ich dennoch ein wenig Stolz, das hier mit der Vorlesungs-Unterstützung des Professors auf die Beine gestellt zu haben! 

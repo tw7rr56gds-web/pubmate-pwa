@@ -1,45 +1,71 @@
 import { useState, useEffect } from 'react';
 
-// --- CUSTOM HOOK ---
-// Kapselt die Logik für den Zugriff auf native Geräte-APIs (Geolocation)
-// in einem modular wiederverwendbaren React Hook.
+/**
+ * @hook useLocation
+ * @description Kapselt die asynchrone Logik für den Zugriff auf native Hardware-Sensoren (GPS).
+ * Implementiert das "Separation of Concerns" Pattern, indem die komplexe Sensor-Logik 
+ * vollständig von den deklarativen UI-Komponenten entkoppelt wird.
+ */
 export const useLocation = () => {
-  // --- REACTIVE STATE MANAGEMENT ---
-  // Verwaltung der UI- und Daten-Zustände während der asynchronen GPS-Abfrage
+  
+  // --- LOKALES STATE MANAGEMENT ---
+  // Verwaltung der reaktiven Zustände während des asynchronen Sensor-Lebenszyklus
   const [location, setLocation] = useState(null);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
 
-  // --- EFFECT HOOK & NATIVE API ACCESS ---
-  // Führt den Seiteneffekt (Abfrage der Hardware-Sensoren) nur beim ersten Mounten aus
+  // --- SIDE EFFECTS & HARDWARE ACCESS ---
   useEffect(() => {
-    // --- PROGRESSIVE ENHANCEMENT: FEATURE DETECTION ---
-    // Dynamische Laufzeitprüfung, ob das Endgerät/der Browser die Geolocation API unterstützt.
-    // Verhindert Abstürze in restriktiven oder veralteten Umgebungen.
+    let isMounted = true; // Memory Leak Protection: Verhindert State-Updates nach Unmount
+
+    // PROGRESSIVE ENHANCEMENT: Feature Detection
+    // Prüft zur Laufzeit, ob der Browser/das Endgerät die Geolocation API unterstützt.
     if (!("geolocation" in navigator)) {
-      setError("Dein Gerät unterstützt keine Standortermittlung.");
-      setIsLoading(false);
+      if (isMounted) {
+        setError("Hardware-Limitierung: Dein Endgerät unterstützt keine Standortermittlung.");
+        setIsLoading(false);
+      }
       return;
     }
 
-    // --- ASYNC BROWSER API ---
-    // Asynchrone Abfrage des echten GPS-Standorts über den Browser
+    // --- HARDWARE OPTIMIZATION ---
+    // Konfiguration für mobile Endgeräte (Balancierung von Genauigkeit vs. Ressourcen/Akku)
+    const geoOptions = {
+      enableHighAccuracy: true, // Erzwingt präzises GPS anstelle von ungenauer IP/WLAN-Triangulation
+      timeout: 15000,           // Abbruch nach 15 Sekunden (verhindert Endlos-Ladezustände)
+      maximumAge: 60000         // Akzeptiert bis zu 1 Minute alte Cache-Daten zur Ressourcenschonung
+    };
+
+    // ASYNC SENSOR API: Abfrage der aktuellen geografischen Koordinaten
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        // Erfolgsfall: Lokalen State mit den auf 4 Nachkommastellen formatierten Koordinaten aktualisieren
-        setLocation({
-          latitude: position.coords.latitude.toFixed(4),
-          longitude: position.coords.longitude.toFixed(4),
-        });
-        setIsLoading(false);
+        if (isMounted) {
+          // Erfolgsfall: Persistierung der exakten Floats (Numbers) für die spätere 
+          // clientseitige Distanzberechnung via Haversine-Algorithmus.
+          setLocation({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          });
+          setIsLoading(false);
+        }
       },
       (err) => {
-        // Graceful Degradation: Saubere Fehlerbehandlung, falls der User die Hardware-Berechtigung verweigert
-        setError("Bitte erlaube den Standortzugriff, um Leute in der Nähe zu finden.");
-        setIsLoading(false);
-      }
+        if (isMounted) {
+          // GRACEFUL DEGRADATION: Sicheres Abfangen von Berechtigungsverweigerungen (User Consent)
+          // oder Hardware-Timeouts, ohne dass die Applikation abstürzt.
+          console.warn("[Sensor Error] Geolocation API:", err.message);
+          setError("Bitte erlaube den Standortzugriff im Browser, um Treffen in deiner Nähe zu finden.");
+          setIsLoading(false);
+        }
+      },
+      geoOptions // Übergabe der Performance-Konfiguration
     );
-  }, []); // Leeres Dependency-Array: Der Hook feuert nur beim Initial-Render
+
+    // Lifecycle-Cleanup-Funktion des Effects
+    return () => {
+      isMounted = false;
+    };
+  }, []); // Leeres Dependency-Array: Garantiert die Ausführung exakt einmal beim Mounten
 
   return { location, error, isLoading };
 };
