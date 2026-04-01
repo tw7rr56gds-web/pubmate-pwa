@@ -3,52 +3,54 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 /**
- * VITE BUILD & PWA ORCHESTRATION
- * Zentrale Konfigurationsinstanz für das Asset-Bundling und die PWA-Spezifikationen.
- * Setzt die "Single-Worker-Architektur" um, um Konflikte zwischen dem 
- * Offline-Caching (Workbox) und dem Cloud Messaging (FCM) zu eliminieren.
+ * @file vite.config.js
+ * @description Zentrale Orchestrierungsschicht für das Build-Management und die 
+ * Progressive Web App (PWA) Konfiguration.
+ * Implementiert eine hybride Offline-Strategie sowie die "Single-Worker-Architektur"
+ * zur konfliktfreien Integration von Firebase Cloud Messaging (FCM).
  */
 export default defineConfig({
-  // --- DEPLOYMENT / HOSTING ---
-  // Verhindert 404-Routing-Fehler auf GitHub Pages durch absolute Pfad-Referenzierung
+  // --- DEPLOYMENT / CI-CD ---
+  // Absolute Pfad-Referenzierung zur Vermeidung von 404-Fehlern beim 
+  // statischen Hosting via GitHub Pages.
   base: '/pubmate-pwa/', 
 
   plugins: [
     react(),
     
-    // --- PWA GENERATOR (Vite-Plugin-PWA) ---
+    // --- PWA BUNDLER (Vite-Plugin-PWA) ---
     VitePWA({
       registerType: 'autoUpdate',
       
       devOptions: {
-        enabled: true // Erlaubt das Testen des Service Workers im lokalen Dev-Server
+        enabled: true // Aktiviert den Service Worker isoliert im lokalen Dev-Environment
       },
 
-      // --- PWA SÄULE: NETWORK INDEPENDENCE ---
+      // --- NETWORK INDEPENDENCE (OFFLINE-FIRST) ---
       workbox: {
-        // App-Shell-Pattern: Lädt statische UI-Ressourcen sofort in den lokalen Cache.
-        // Ermöglicht einen extrem schnellen "First Meaningful Paint" auch bei 3G-Verbindung.
+        // App-Shell-Pattern: Aggressives Precaching statischer Kernressourcen 
+        // für einen optimalen "First Meaningful Paint" (TTI-Reduktion).
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
         
-        // --- PWA SÄULE: RE-ENGAGEABILITY (DER MASTER-FIX) ---
-        // Injektion des Firebase-Messaging-Scripts in den generierten Caching-Worker.
-        // Verhindert die Instanziierung von zwei konkurrierenden Service Workern.
+        // ARCHITEKTUR-FIX: Single-Worker-Pattern
+        // Injektion des FCM-Background-Listeners in den Haupt-Service-Worker.
+        // Eliminiert Race-Conditions zwischen lokalem Caching und dem Push-Lifecycle.
         importScripts: ['firebase-messaging-sw.js'],
         
-        // Runtime Caching: Dynamische Interzeption für externe API-Calls.
+        // Runtime Caching: Dynamische Interzeption externer Netzwerkzugriffe.
         runtimeCaching: [
           {
-            // Abfangen asynchroner Geodaten-Anfragen an die Overpass API.
+            // Proxy-Interzeption für asynchrone Geodaten der Overpass API.
             urlPattern: /^https:\/\/overpass-api\.de\/.*/i,
             
-            // Strategie 'NetworkFirst': Liefert hochaktuelle Daten, fällt bei 
-            // Netzwerkausfall jedoch als Graceful Degradation auf den Cache zurück.
+            // Strategie 'NetworkFirst': Liefert Live-Daten, nutzt den Cache 
+            // jedoch als "Graceful Degradation"-Fallback bei Verbindungsabbrüchen.
             handler: 'NetworkFirst',
             options: {
               cacheName: 'osm-api-cache',
               expiration: {
                 maxEntries: 10,
-                maxAgeSeconds: 60 * 60 * 24 * 7 // 7 Tage Validität
+                maxAgeSeconds: 60 * 60 * 24 * 7 // 7 Tage Cache-Retention
               },
               cacheableResponse: {
                 statuses: [0, 200]
@@ -58,25 +60,43 @@ export default defineConfig({
         ]
       },
 
-      // --- PWA SÄULEN: INSTALLABLE, LINKABLE, DISCOVERABLE ---
+      // --- DISCOVERABLE, INSTALLABLE & RE-ENGAGEABLE ---
       manifest: {
         name: 'PubMate',
         short_name: 'PubMate',
         description: 'Finde Leute zum Anstoßen in deiner Nähe!',
         theme_color: '#f97316',
         background_color: '#ffffff',
-        display: 'standalone', // Entfernt den Browser-Chrome für eine native App-UX
+        display: 'standalone', // Emuliert einen nativen App-Container (ohne Browser-Chrome)
+        
         icons: [
           {
             src: 'icon-192x192.png', 
             sizes: '192x192',
             type: 'image/png',
-            purpose: 'any maskable' // Unterstützt adaptive Icon-Masken (Best-Practice für Android)
+            purpose: 'any maskable' // Best-Practice für adaptive Android-Icons
           },
           {
             src: 'icon-512x512.png', 
             sizes: '512x512',
             type: 'image/png'
+          }
+        ],
+        
+        // RICH INSTALL PROMPT: Visuelle Aufwertung des nativen Installationsdialogs 
+        // zur Steigerung der Conversion-Rate (App-Store-Emulation).
+        screenshots: [
+          {
+            src: 'screenshot-mobile.png',
+            sizes: '1080x1920', 
+            type: 'image/png',
+            form_factor: 'narrow' // Definition für mobile Endgeräte
+          },
+          {
+            src: 'screenshot-desktop.png',
+            sizes: '1920x1080', 
+            type: 'image/png',
+            form_factor: 'wide' // Definition für Tablet- und Desktop-Ansichten
           }
         ]
       }
